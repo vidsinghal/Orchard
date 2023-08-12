@@ -1,4 +1,3 @@
-
 #include "AST.h"
 #include <chrono>
 #include <iostream>
@@ -71,7 +70,7 @@ StmtListInner *createListOfStmt(int N, bool AddIf = false) {
   }
   ((StmtListInner *)currStmt)->Next = new StmtListEnd();
   if (AddIf)
-    ((StmtListInner *)currStmt)->Next->Stmt = createIf(5);
+    ((StmtListInner *)currStmt)->Next->Stmt = createIf(0);
   else {
     ((StmtListInner *)currStmt)->Next->Stmt = createExprAssignment(
         X, createAddExpr(
@@ -250,4 +249,100 @@ Program *createLongLiveRangeProg(int FCount, int stmtCount) {
   ((FunctionListInner *)CurrF)->Next->Content =
       createLongLiveRangeFunc(FCount + 1);
   return ret;
+}
+
+
+//These functions are made for creating inputs that showcase parallelism benefits
+//An AST tree which maximizes parallelism
+
+StmtListInner *createListOfBalancedStmt(int N, int val, bool AddIf = false) {
+  auto *ret = new StmtListInner();
+  ret->NodeType = ASTNodeType::SEQ;
+
+  ret->Stmt = createExprAssignment(val, createVarRef(val));
+  StmtListNode *currStmt = ret;
+  for (int i = 0; i < N; i++) {
+
+    ((StmtListInner *)currStmt)->Next = new StmtListInner();
+    ((StmtListInner *)currStmt)->Next->NodeType = ASTNodeType::SEQ;
+
+    ((StmtListInner *)currStmt)->Next->Stmt = createExprAssignment(val,  createAddExpr( createAddExpr(createAddExpr(createVarRef(1), createVarRef(3)), createAddExpr(createVarRef(val), createVarRef(0))), createAddExpr(createAddExpr(createVarRef(7), createVarRef(3)), createAddExpr(createVarRef(val), createVarRef(4))) ));
+    
+    currStmt = ((StmtListInner *)currStmt)->Next;
+  }
+  
+  ((StmtListInner *)currStmt)->Next = new StmtListEnd();
+  if (AddIf)
+    ((StmtListInner *)currStmt)->Next->Stmt = createIf(0);
+  else {
+    ((StmtListInner *)currStmt)->Next->Stmt = createExprAssignment(val,  createAddExpr( createAddExpr(createAddExpr(createVarRef(1), createVarRef(3)), createAddExpr(createVarRef(val), createVarRef(0))), createAddExpr(createAddExpr(createVarRef(7), createVarRef(3)), createAddExpr(createVarRef(val), createVarRef(4))) ));
+  }
+  return ret;
+}
+
+
+IfStmt *balancedIf(int val, int num) {
+  IfStmt *ret = new IfStmt();
+  ret->NodeType = STMT;
+  ret->StatementType = IF;
+  ret->Condition = createAddExpr(createVarRef(val), createVarRef(val));
+  ret->ThenPart = createListOfBalancedStmt(num, val);
+  ret->ElsePart = createListOfBalancedStmt(num, val);
+  return ret;
+}
+
+Function *createBalancedAST(int StmtCount, int num) {
+  Function *ret = new Function();  
+  ret->FunctionName = "F" + std::to_string((long long)num);  
+  ret->NodeType = ASTNodeType::FUNCTION;
+  ret->StmtList = new StmtListInner();
+  int i = 0;
+  auto *currStmt = ret->StmtList;
+  while (i != StmtCount) {
+    switch (rand() % 5) {
+    case 0:
+      currStmt->Stmt =
+          createExprAssignment(rand() % SZ, createVarRef(rand() % SZ));
+      break;
+    case 1:
+      currStmt->Stmt =
+          createExprAssignment(rand() % SZ, createConstantExpr(rand() % 1000));
+      break;
+    case 2:
+      currStmt->Stmt = createIncr(rand() % SZ);
+      break;
+    case 3:
+      currStmt->Stmt = createExprAssignment(rand() % SZ,  createAddExpr( createAddExpr(createAddExpr(createVarRef(1), createVarRef(3)), createAddExpr(createVarRef(rand() % SZ), createVarRef(0))), createAddExpr(createAddExpr(createVarRef(7), createVarRef(3)), createAddExpr(createVarRef(rand() % SZ), createVarRef(4))) ));
+      break;
+    case 4:
+      currStmt->Stmt = balancedIf(rand() % SZ, 4);
+      break;  
+    }
+
+    ((StmtListInner *)(currStmt))->Next = new StmtListInner();
+    currStmt = ((StmtListInner *)(currStmt))->Next;
+    i++;
+  }
+  currStmt->Stmt = createIncr();
+  ((StmtListInner *)(currStmt))->Next = new StmtListEnd();
+  ((StmtListInner *)(currStmt))->Next->Stmt = createIncr();
+  return ret;
+}
+
+Program * balancedAST(int stmtCount, int functions) {
+    
+  srand(0);    
+  auto ret = new Program();
+  ret->Functions = new FunctionListInner();
+  auto *CurrF = ret->Functions;
+  for (int i = 0; i < functions - 2; i++) {
+    CurrF->Content = createBalancedAST(stmtCount, i);
+    ((FunctionListInner *)CurrF)->Next = new FunctionListInner();
+    CurrF = ((FunctionListInner *)CurrF)->Next;
+  }
+  CurrF->Content = createBalancedAST(stmtCount, functions);
+  ((FunctionListInner *)CurrF)->Next = new FunctionListEnd();
+  ((FunctionListInner *)CurrF)->Next->Content = createBalancedAST(stmtCount, functions + 1);
+  return ret;
+  
 }

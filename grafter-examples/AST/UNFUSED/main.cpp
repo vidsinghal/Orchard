@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <vector>
+#include <cilk/cilk.h>
+#include <cilk/cilk_api.h>
 
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
@@ -78,7 +80,7 @@ void optimize(vector<Program *> &ls) {
     f->propagateConstantsAssignments();
     f->foldConstants();
     f->removeUnreachableBranches();
-    //   f->print();
+    //f->print();
   }
   auto t2 = std::chrono::high_resolution_clock::now();
 #ifdef PAPI
@@ -92,11 +94,22 @@ void optimize(vector<Program *> &ls) {
 }
 
 int main(int argc, char **argv) {
-  // number of functions
+    
+//   if (0!= __cilkrts_set_param("stack size","200000000"))
+//     {
+//       printf("Failed to set worker count\n");
+//       return 1;
+//     }   
+    
+    
+  //number of functions
   int FCount = atoi(argv[1]);
 
-  int Prog = atoi(argv[2]);
-  // how many tree to create
+  int statements = atoi(argv[2]);
+  
+  int Prog = atoi(argv[3]);
+  
+  //how many tree to create
   int Itters = 1;
   vector<Program *> ls;
   ls.resize(Itters);
@@ -111,6 +124,9 @@ int main(int argc, char **argv) {
       break;
     case 3: // the ast is a really large function (vert AST)
       ls[i] = createLongLiveRangeProg(FCount, FCount);
+      break;
+    case 4: // a balanced AST with parallelism available!
+      ls[i] = balancedAST(statements, FCount);
       break;
     default:
       break;

@@ -1,4 +1,5 @@
 #include "AST.h"
+#include <cilk/cilk.h>
 
 __tree_traversal__ void Program::foldConstants() {
 #ifdef COUNT_VISITS
@@ -72,8 +73,11 @@ __tree_traversal__ void StmtListInner::foldConstants() {
 #ifdef COUNT_VISITS
   _VISIT_COUNTER++;
 #endif
-  Stmt->foldConstants();
-  Next->foldConstants();
+  
+ /*cilk_spawn*/ Stmt->foldConstants();
+            Next->foldConstants();
+ 
+//  cilk_sync;
 }
 
 __tree_traversal__ void StmtListEnd::foldConstants() {

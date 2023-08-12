@@ -1,5 +1,5 @@
 #include "AST.h"
-
+#include <cilk/cilk.h>
 __tree_traversal__ void Program::desugarInc() {
  #ifdef COUNT_VISITS
  _VISIT_COUNTER++;
@@ -11,8 +11,9 @@ __tree_traversal__ void FunctionListInner::desugarInc() {
  #ifdef COUNT_VISITS
   _VISIT_COUNTER++;
   #endif
-  Content->desugarInc();
-  Next->desugarInc();
+   Content->desugarInc();
+   Next->desugarInc();
+  
 }
 
 __tree_traversal__ void FunctionListEnd::desugarInc() {
@@ -31,7 +32,7 @@ __tree_traversal__ void StmtListInner::desugarInc() {
  #ifdef COUNT_VISITS
   _VISIT_COUNTER++;
    #endif
-  Stmt->desugarInc();
+  /*cilk_spawn*/ Stmt->desugarInc();
 
   if (Stmt->StatementType == INC) {
     int Variable =
@@ -80,6 +81,6 @@ __tree_traversal__ void IfStmt::desugarInc() {
  #ifdef COUNT_VISITS
  _VISIT_COUNTER++;
  #endif
-  ThenPart->desugarInc();
+ /*cilk_spawn*/ ThenPart->desugarInc();
   ElsePart->desugarInc();
 }
