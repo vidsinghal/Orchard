@@ -15,6 +15,7 @@
 #include "LLVMDependencies.h"
 #include "Logger.h"
 #include "RecordAnalyzer.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <assert.h>
 #include <iostream>
@@ -28,6 +29,16 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp("");
 
 int main(int argc, const char **argv) {
+
+  // Make the last argument passed as the type of fusion heuristic
+  std::string Heuristic = argv[argc - 1];
+
+  llvm::outs() << "----------------------------------------------"
+               << "\n";
+  llvm::outs() << "Using Heuristic: " << Heuristic << "\n";
+  llvm::outs() << "----------------------------------------------"
+               << "\n";
+
   clang::tooling::CommonOptionsParser OptionsParser(argc, argv,
                                                     TreeFuserCategory);
   clang::tooling::ClangTool ClangTool(OptionsParser.getCompilations(),
@@ -64,14 +75,15 @@ int main(int argc, const char **argv) {
 
     // Find candidates
     CandidatesFinder.findCandidates();
-    FusionTransformer Transformer(Ctx, &FunctionsInfo);
+    FusionTransformer Transformer(Ctx, &FunctionsInfo, Heuristic);
 
     // Perform fusion
     for (auto &Entry : CandidatesFinder.getFusionCandidates()) {
       auto *EnclosingFunctionDecl = Entry.first;
       for (auto &Candidate : Entry.second) {
         // Must be defined locally to avoid duplicate functions definitions
-        Transformer.performFusion(Candidate, true, EnclosingFunctionDecl);
+        Transformer.performFusion(Candidate, true, EnclosingFunctionDecl,
+                                  Heuristic);
         // Commit source file changes
       }
     }

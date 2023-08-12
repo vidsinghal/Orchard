@@ -69,7 +69,8 @@ FunctionAnalyzer::FunctionAnalyzer(clang::FunctionDecl *FuncDeclaration) {
   return;
 }
 
-// bool FunctionAnalyzer::isInCalledChildList(clang::FieldDecl *ChildDecl) const {
+// bool FunctionAnalyzer::isInCalledChildList(clang::FieldDecl *ChildDecl) const
+// {
 //   for (auto Call : TraversingCalls) {
 //     clang::FieldDecl *CalledChildDecl = Call.second;
 //     if (ChildDecl == CalledChildDecl)
@@ -349,7 +350,7 @@ bool FunctionAnalyzer::checkFuseSema() {
               ->getStmtClass() == clang::Stmt::CXXThisExprClass) {
         addTraversingCall(
             Call->getCalleeDecl()->getAsFunction()->getDefinition(), nullptr);
-       
+
       } else {
         AccessPath CalledChildAccessPath(
             isGlobal()

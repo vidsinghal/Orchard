@@ -70,25 +70,37 @@ private:
   static DependenceAnalyzer DepAnalyzer;
   static TraversalSynthesizer *Synthesizer;
 
-
 public:
+  std::string Heuristic;
+
   /// Perform fusion transformation on a given list of candidates
   void performFusion(const vector<clang::CallExpr *> &Candidate,
-                     bool IsTopLevel, clang::FunctionDecl *EnclosingFunctionDecl
-                     /*just needed fo top level*/);
+                     bool IsTopLevel,
+                     clang::FunctionDecl *EnclosingFunctionDecl
+                     /*just needed for top level*/,
+                     std::string Heuristic);
 
   /// Commiting source code updates to the source files
   void overwriteChangedFiles() { Rewriter.overwriteChangedFiles(); }
 
   void performGreedyFusion(DependenceGraph *DepGraph);
 
-  vector<DG_Node *> findToplogicalOrder(DependenceGraph *DepGraph);
+  // vector<DG_Node *> findToplogicalOrder(DependenceGraph *DepGraph);
 
-  void findToplogicalOrderRec(vector<DG_Node *> &topOrder,
+  /*void findToplogicalOrderRec(vector<DG_Node *> &topOrder,
                               unordered_map<DG_Node *, bool> &visited,
                               DG_Node *node);
+  */
 
-  FusionTransformer(ASTContext *Ctx, FunctionsFinder *FunctionsInfo);
+  // The algorithm for topologically sorting the dependence graph for
+  // parallelism
+  vector<vector<DG_Node *>> parallelSchedule(DependenceGraph *DepGraph);
+
+  bool unfusableCallsExist(DG_Node *function1, DG_Node *function2,
+                           DependenceGraph *DepGraph);
+
+  FusionTransformer(ASTContext *Ctx, FunctionsFinder *FunctionsInfo,
+                    std::string Heuristic);
 };
 
 #endif

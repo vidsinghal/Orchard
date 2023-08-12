@@ -11,6 +11,7 @@
 #include "FuseTransformation.h"
 #include "DependenceAnalyzer.h"
 #include "DependenceGraph.h"
+#include <algorithm>
 
 extern llvm::cl::OptionCategory TreeFuserCategory;
 namespace opts {
@@ -62,7 +63,7 @@ bool FusionCandidatesFinder::VisitCompoundStmt(
     if (areCompatibleCalls(Candidate[0], CurrentCallStmt)) {
       Candidate.push_back(CurrentCallStmt);
     } else {
-      if (Candidate.size() > 1)
+      if (Candidate.size() > 1) //==1
         FusionCandidates[CurrentFuncDecl].push_back(Candidate);
 
       Candidate.clear();
@@ -118,17 +119,20 @@ bool FusionCandidatesFinder::areCompatibleCalls(clang::CallExpr *Call1,
 }
 
 FusionTransformer::FusionTransformer(ASTContext *Ctx,
-                                     FunctionsFinder *FunctionsInfo) {
+                                     FunctionsFinder *FunctionsInfo,
+                                     std::string Heuristic) {
   Rewriter.setSourceMgr(Ctx->getSourceManager(), Ctx->getLangOpts());
   this->Ctx = Ctx;
   this->FunctionsInformation = FunctionsInfo;
+  this->Heuristic = Heuristic;
   if (!this->Synthesizer)
     this->Synthesizer = new TraversalSynthesizer(Ctx, Rewriter, this);
 }
 
 void FusionTransformer::performFusion(
     const vector<clang::CallExpr *> &Candidate, bool IsTopLevel,
-    clang::FunctionDecl *EnclosingFunctionDecl /*just needed fo top level*/) {
+    clang::FunctionDecl *EnclosingFunctionDecl /*just needed fo top level*/,
+    std::string Heuristic = "greedy") {
 
   bool HasVirtual = false;
   bool HasCXXMethod = false;
@@ -167,20 +171,90 @@ void FusionTransformer::performFusion(
       DependenceGraph *DepGraph =
           DepAnalyzer.createDependenceGraph(Candidate, HasVirtual, DerivedType);
 
+      // added this part to perform coarse grained fusion.
+      // for(auto *Node : DepGraph->getNodes()) {s
+      //   std::vector<StatementInfo *> Statements;
+      //   if(Node->getStatementInfo()->isCallStmt()) {
+      //     Statements =
+      //     Node->getStatementInfo()->getEnclosingFunction()->getStatements();
+      //     for (auto *subStatements : Statements) {
+      //       if (subStatements->isCallStmt()){
+      //         if (subStatements->getCalledChild() != nullptr)
+      //            Node->treeChildsVisited.insert(subStatements->getCalledChild());
+      //       }
+      //     }
+      //   }
+      // }
+
       // DepGraph->dump();
+      // parallelize everythin here first
+      // Continue parallelizing then fusing until the dependence graph converges
 
-      performGreedyFusion(DepGraph);
+      //         std::vector<vector<DG_Node *>> parallel;
+      //         std::vector<vector<DG_Node *>> temp;
+      //         std::unordered_set<DG_Node*> set1;
+      //         std::unordered_set<DG_Node*> set2;
+      //         int i = 0;
+      //         int j = 0;
+      //         int k = 0;
+      //         int l = 0;
+      //         int check = 0;
+      //         while(true)
+      //         {
+      //           cout << "ierations\n";
+      //           cout << " ";
+      /*parallel =*/ // parallelSchedule(DepGraph);
+      //           if (parallel.size() == temp.size()){
+      //
+      //           for(j = 0; j < parallel.size(); j++){
+      //
+      //             if (parallel[j].size() != temp[j].size())
+      //                break;
+      //             for(k = 0; k < parallel[j].size(); k++)
+      //                set1.insert(parallel[j][k]);
+      //             for (k = 0; k < temp[j].size(); k++)
+      //                 set2.insert(temp[j][k]);
+      //             if (set2 != set1)
+      //                 break;
+      //             else{
+      //                 check += 1;
+      //                 set1.clear();
+      //                 set2.clear();
+      //             }
+      //
+      //           }}
+      //           if(check == parallel.size())
+      //              break;
+      //           else{
+      //             check = 0;
+      //             set1.clear();
+      //             set2.clear();
+      //           }
+      //           temp.swap(parallel);
 
+      if (Heuristic != "solely-parallel") {
+        performGreedyFusion(DepGraph);
+      }
+      // }
       LLVM_DEBUG(DepGraph->dumpMergeInfo());
 
       // Check that fusion was correctly made
       assert(!DepGraph->hasCycle() && "dep graph has cycle");
       assert(!DepGraph->hasWrongFuse() && "dep graph has wrong merging");
 
-      std::vector<DG_Node *> ToplogicalOrder = findToplogicalOrder(DepGraph);
+      // std::vector<DG_Node *> ToplogicalOrder = findToplogicalOrder(DepGraph);
+      // //uncomment with recursion toposort
+      std::vector<vector<DG_Node *>> ToplogicalOrder =
+          parallelSchedule(DepGraph); // for the queue implementation
 
       Synthesizer->generateWriteBackInfo(Candidate, ToplogicalOrder, HasVirtual,
                                          HasCXXMethod, DerivedType);
+      // added please remove if necessary !!!!!!!
+      /////////////////////////////////////////////////////////////////////////////////////
+      /*Synthesizer->generateWriteBackInfo_serial(Candidate, ToplogicalOrder,
+         HasVirtual, HasCXXMethod, DerivedType);*/
+      /////////////////////////////////////////////////////////////////////////////////////////
+
       // Logger::getStaticLogger().logDebug("Code Generation Done ");
     }
   };
@@ -200,6 +274,13 @@ void FusionTransformer::performFusion(
 
 void FusionTransformer::performGreedyFusion(DependenceGraph *DepGraph) {
   unordered_map<clang::FieldDecl *, vector<DG_Node *>> ChildToCallers;
+
+  std::vector<StatementInfo *> Statements_i;
+  int numStatements_i = 0;
+
+  std::vector<StatementInfo *> Statements_j;
+  int numStatements_j = 0;
+
   for (auto *Node : DepGraph->getNodes()) {
     if (Node->getStatementInfo()->isCallStmt()) {
       ChildToCallers[Node->getStatementInfo()->getCalledChild()].push_back(
@@ -231,6 +312,7 @@ void FusionTransformer::performGreedyFusion(DependenceGraph *DepGraph) {
     // random_shuffle(nodeLst.begin(), nodeLst.end());
     // random_shuffle(nodeLst.begin(), nodeLst.end());
 
+    // while(true){
     for (int i = 0; i < CallNodes.size(); i++) {
       if (CallNodes[i]->isMerged())
         continue;
@@ -239,6 +321,77 @@ void FusionTransformer::performGreedyFusion(DependenceGraph *DepGraph) {
         if (CallNodes[j]->isMerged())
           continue;
 
+        // if (CallNodes[j]->ID == CallNodes[i]->ID){
+        //   continue;
+        // }
+
+        // if (CallNodes[i]->getTraversalId() == CallNodes[j]->getTraversalId())
+        //     continue;
+        // check if there exist calls in CallNodes[i] and CallNodes[j] that act
+        // on the same child and can't fused
+        // if(unfusableCallsExist(CallNodes[i], CallNodes[j], DepGraph))
+        //     continue;
+
+        // if (CallNodes[i]->treeChildsVisited.size() != 2 &&
+        // CallNodes[j]->treeChildsVisited.size() != 2)
+        //    continue;
+
+        // if (CallNodes[i]->treeChildsVisited !=
+        // CallNodes[j]->treeChildsVisited)
+        //    continue;
+
+        // if(CallNodes[i]->isSpawned() && CallNodes[j]->isSpawned()){
+
+        //   if(CallNodes[j]-> getTraversalId() == CallNodes[i]->
+        //   getTraversalId()){
+
+        // Statements_i = CallNodes[i] -> getStatementInfo() ->
+        // getEnclosingFunction()->getStatements(); numStatements_i =
+        // Statements_i.size(); bool tell_numStatements_i = false; for (auto *
+        // myStatement: Statements_i){
+        //    if (myStatement->isCallStmt())
+        //        tell_numStatements_i = true;
+        // }
+
+        // Statements_j = CallNodes[j] -> getStatementInfo() ->
+        // getEnclosingFunction()->getStatements(); numStatements_j =
+        // Statements_j.size(); bool tell_numStatements_j = false; for (auto *
+        // myStatement: Statements_j){
+        //   if (myStatement->isCallStmt())
+        //       tell_numStatements_j = true;
+        // }
+
+        // if (( CallNodes[i]->isSpawned() && numStatements_i > 16)  &&
+        // (CallNodes[j]->isSpawned() && numStatements_j > 16) ){
+
+        // if (tell_numStatements_i && tell_numStatements_j)
+        //   continue;
+        //}
+
+        // int token = rand() % 2;
+
+        //  if (CallNodes[i]->isSpawned() && CallNodes[j]->isSpawned() && token
+        //  == 0)
+        //      continue;
+
+        //  if (numStatements_i >= 16 && numStatements_j >= 16)
+        //       continue;
+
+        // int token = rand() % 2;
+        //             cout<<token;
+        //             cout<<"\n";
+        // if (token == 0)
+        //  continue;
+
+        // cout<<numStatements;
+        // cout<<"\n";
+        //      continue;
+        //   }
+
+        // }
+
+        // potentially add the if condition to check if calls are in parallel or
+        // not if(!CallNodes[i]->IsSpawned && !CallNodes[j]->IsSpawned)
         DepGraph->merge(CallNodes[i], CallNodes[j]);
 
         auto ReachMaxMerged = [&](MergeInfo *Info) {
@@ -272,58 +425,317 @@ void FusionTransformer::performGreedyFusion(DependenceGraph *DepGraph) {
         }
       }
     }
+    // }
   }
 }
 
+/*
 void FusionTransformer::findToplogicalOrderRec(
     vector<DG_Node *> &TopOrder, unordered_map<DG_Node *, bool> &Visited,
     DG_Node *Node) {
   if (!Node->allPredesVisited(Visited))
     return;
 
-  TopOrder.push_back(Node);
-  if (!Node->isMerged()) {
-    Visited[Node] = true;
-    for (auto &SuccDep : Node->getSuccessors()) {
-      if (!Visited[SuccDep.first])
-        findToplogicalOrderRec(TopOrder, Visited, SuccDep.first);
-    }
-    return;
+  TopOrder.push_back(Node);*/
+/*
+if (!Node->isMerged()) {
+  Visited[Node] = true;
+  for (auto &SuccDep : Node->getSuccessors()){
+    if (!Visited[SuccDep.first])
+      findToplogicalOrderRec(TopOrder, Visited, SuccDep.first);
   }
+  return;
+}
 
-  // Handle merged node
-  for (auto *MergedNode : Node->getMergeInfo()->MergedNodes) {
-    assert(!Visited[MergedNode]);
-    Visited[MergedNode] = true;
+// Handle merged node
+for (auto *MergedNode : Node->getMergeInfo()->MergedNodes) {
+  assert(!Visited[MergedNode]);
+  Visited[MergedNode] = true;
+}
+ //call return Successors
+for (auto *MergedNode : Node->getMergeInfo()->MergedNodes) {
+  for (auto &SuccDep : MergedNode->getSuccessors()) {
+
+    if (Node->getMergeInfo()->isInMergedNodes(SuccDep.first))
+      continue;
+
+    // WRONG ASSERTION
+    if (!Visited[SuccDep.first])
+      findToplogicalOrderRec(TopOrder, Visited, SuccDep.first);
   }
-
-  for (auto *MergedNode : Node->getMergeInfo()->MergedNodes) {
-    for (auto &SuccDep : MergedNode->getSuccessors()) {
-
-      if (Node->getMergeInfo()->isInMergedNodes(SuccDep.first))
-        continue;
-
-      // WRONG ASSERTION
-      if (!Visited[SuccDep.first])
-        findToplogicalOrderRec(TopOrder, Visited, SuccDep.first);
-    }
+ }*/
+/*
+Node->markVisited(Visited);
+for (auto successors : Node->getAllSuccessors()){
+   if(!Visited[successors]){
+      findToplogicalOrderRec(TopOrder, Visited, successors);
   }
+}
 }
 
 std::vector<DG_Node *>
 FusionTransformer::findToplogicalOrder(DependenceGraph *DepGraph) {
-  std::unordered_map<DG_Node *, bool> Visited;
-  std::vector<DG_Node *> Order;
+std::unordered_map<DG_Node *, bool> Visited;
+std::vector<DG_Node *> Order;
 
-  bool AllVisited = false;
-  while (!AllVisited) {
-    AllVisited = true;
-    for (auto *Node : DepGraph->getNodes()) {
+bool AllVisited = false;
+//DepGraph->dump();
+while (!AllVisited) {
+ AllVisited = true;
+ for (auto *Node : DepGraph->getNodes()) {
+   if (!Visited[Node]) {
+     AllVisited = false;
+     findToplogicalOrderRec(Order, Visited, Node);
+   }
+ }
+}
+return Order;
+}
+*/
+
+std::vector<vector<DG_Node *>>
+FusionTransformer::parallelSchedule(DependenceGraph *DepGraph) {
+  std::vector<vector<DG_Node *>> Order; // vector of vector for || schedule
+  std::list<DG_Node *> readyList;
+  std::unordered_map<DG_Node *, bool> Visited;
+
+  // add only the roots!
+  // std::multimap<DG_Node *, FieldDecl *> Visiting_Children;
+  for (auto *Node : DepGraph->getNodes()) {
+
+    // if(Node->allPredesVisited(Visited)) //check to see if root node or not
+
+    // if(Node->isRootNode()!= Node->allPredesVisited(Visited) ){
+    //   outs()<<"checking mismatch:\n";
+
+    //   outs()<<Node->getTraversalId()<<"\n";
+    //   outs()<<Node->getStatementInfo()->getStatementId()<<"\n";
+
+    //   Node->getStatementInfo()->Stmt->dump();
+
+    //   outs()<<"graph is \n";
+    //   DepGraph->dumpMergeInfo();
+
+    //   DepGraph->dump();
+
+    // }
+    //  assert(Node->isRootNode() == Node->allPredesVisited(Visited) &&
+    //  "expecting root to have all pred visited!" );
+    if (Node->isRootNode())
+      readyList.push_back(Node);
+
+    // std::vector<StatementInfo *> Statements;
+    // if(Node->getStatementInfo()->isCallStmt()){
+
+    //    Statements =
+    //    Node->getStatementInfo()->getEnclosingFunction()->getStatements();
+    //    std::vector<FieldDecl *> childCalled;
+    //    for (auto *subStatements : Statements){
+
+    //        if (subStatements->isCallStmt()){
+    //            //outs() << "found a call statement\n";
+    //            if (subStatements->getCalledChild() != nullptr)
+    //                Node->treeChildsVisited.insert(subStatements->getCalledChild());
+    //            //Visiting_Children.insert ( pair<DG_Node *, FieldDecl
+    //            *>(Node, subStatements->getCalledChild()) );
+    //        }
+
+    //   }
+    // }
+  }
+
+  // for (multimap<DG_Node *, FieldDecl *>::iterator it =
+  // Visiting_Children.begin(); it != Visiting_Children.end(); ++it)
+  //          cout << "  [" << (*it).first << ", " << (*it).second << "]" <<
+  //          endl;
+
+  // for(auto *Node : DepGraph->getNodes()){
+
+  // cout << Node->treeChildsVisited.size() << endl;
+
+  //}
+
+  int counterID = 0;
+  while (!readyList.empty()) {
+
+    for (auto it = readyList.begin(); it != readyList.end();) {
+      auto *Node = *it;
+      auto *stmInfo = Node->getStatementInfo();
+      if (stmInfo->isCallStmt()) {
+        it++;
+        continue;
+      }
+
+      if (Visited[Node]) {
+        auto prev = it;
+        it++;
+        readyList.erase(prev);
+        continue;
+      }
+
+      std::vector<DG_Node *> stmOrder; // make a vector for the parallel order
+                                       // in each iteration of statements
+      stmOrder.push_back(Node);
+      Order.push_back(stmOrder);
+      Node->markVisited(Visited);
+      auto prev = it;
+      it++;
+      readyList.erase(prev);
+
+      for (auto successor : Node->getAllSuccessors()) {
+        if (!Visited[successor] && successor->allPredesVisited(Visited))
+          readyList.push_back(successor);
+      }
+    } // after this loop readyList will only contain all the possible parallel
+      // calls order
+
+    std::vector<DG_Node *> parallelOrder; // parallel Order vector for calls
+
+    for (auto *Node : readyList) {
       if (!Visited[Node]) {
-        AllVisited = false;
-        findToplogicalOrderRec(Order, Visited, Node);
+        Node->markVisited(Visited);
+        parallelOrder.push_back(Node);
       }
     }
+
+    /*
+    if(parallelOrder.size() == 1){
+      for(auto *Node : parallelOrder){
+          Node->IsSpawned = false;
+      }
+    }
+    else{
+
+     for(auto *Node : parallelOrder){
+        Node->IsSpawned = true;
+     }
+
+    }
+    */
+
+    for (auto *Node : parallelOrder) {
+
+      Node->ID = counterID;
+    }
+
+    readyList.clear();
+
+    for (auto *Node : parallelOrder) {
+      for (auto successor : Node->getAllSuccessors()) {
+        if (!Visited[successor] && successor->allPredesVisited(Visited))
+          readyList.push_back(successor);
+      }
+    }
+
+    Order.push_back(parallelOrder);
+    counterID++;
   }
+
   return Order;
+}
+
+bool FusionTransformer::unfusableCallsExist(DG_Node *function1,
+                                            DG_Node *function2,
+                                            DependenceGraph *DepGraph) {
+
+  std::vector<StatementInfo *> body1 =
+      function1->getStatementInfo()->getEnclosingFunction()->getStatements();
+
+  std::vector<StatementInfo *> body2 =
+      function2->getStatementInfo()->getEnclosingFunction()->getStatements();
+
+  unordered_map<clang::FieldDecl *, vector<StatementInfo *>> ChildToCallers1;
+
+  unordered_map<clang::FieldDecl *, vector<StatementInfo *>> ChildToCallers2;
+
+  for (auto *statements : body1) {
+    if (statements->isCallStmt()) {
+      if (statements->getCalledChild() != nullptr)
+        ChildToCallers1[statements->getCalledChild()].push_back(statements);
+    }
+  }
+
+  for (auto *statements : body2) {
+    if (statements->isCallStmt()) {
+      if (statements->getCalledChild() != nullptr)
+        ChildToCallers2[statements->getCalledChild()].push_back(statements);
+    }
+  }
+
+  vector<unordered_map<clang::FieldDecl *, vector<StatementInfo *>>::iterator>
+      IteratorsList;
+
+  for (auto It = ChildToCallers1.begin(); It != ChildToCallers1.end(); It++)
+    IteratorsList.push_back(It);
+
+  for (auto It : IteratorsList) {
+    vector<StatementInfo *> &CallNodes1 = It->second;
+    clang::FieldDecl *Child = It->first;
+
+    if (ChildToCallers2.find(Child) == ChildToCallers2.end()) {
+
+      vector<StatementInfo *> CallNodes2 = ChildToCallers2[Child];
+
+      for (int i = 0; i < CallNodes1.size(); i++) {
+
+        DG_Node *Node1;
+        for (auto *Node : DepGraph->getNodes()) {
+          if (Node->getStatementInfo() == CallNodes1[i] &&
+              Node->getTraversalId() == function1->getTraversalId()) {
+            Node1 = Node;
+            break;
+          }
+        }
+        for (int j = 0; j < CallNodes2.size(); j++) {
+
+          DG_Node *Node2;
+          for (auto *Node : DepGraph->getNodes()) {
+            if (Node->getStatementInfo() == CallNodes2[j] &&
+                Node->getTraversalId() == function2->getTraversalId()) {
+              Node2 = Node;
+              break;
+            }
+          }
+
+          DepGraph->merge(Node1, Node2);
+
+          //  auto ReachMaxMerged = [&](MergeInfo *Info) {
+          //    unordered_map<FunctionDecl *, int> Counter;
+          //    for (auto *Node : Info->MergedNodes) {
+          //      Counter[Node->getStatementInfo()
+          //               ->getCalledFunction()
+          //               ->getDefinition()]++;
+          //       auto Count = Counter[Node->getStatementInfo()
+          //                            ->getCalledFunction()
+          //                            ->getDefinition()];
+          //       if (Count > opts::MaxMergedInstances) {
+          //         return true;
+          //     }
+          //   }
+          //   return false;
+          //  };
+
+          if (/*Node1->getMergeInfo()->MergedNodes.size() > opts::MaxMergedNodes
+                 ||*/
+              /*ReachMaxMerged(Node1->getMergeInfo()) ||*/ DepGraph
+                  ->hasCycle() ||
+              DepGraph->hasWrongFuse(Node1->getMergeInfo())) {
+
+            DepGraph->unmerge(Node2);
+
+            return true;
+          }
+
+          DepGraph->unmerge(Node2);
+        }
+      }
+    }
+    // else{
+
+    //    return true;
+
+    // }
+  }
+
+  return false;
 }

@@ -74,7 +74,15 @@ private:
   MergeInfo *Info = nullptr;
 
 public:
+  // keep track of all the tree children that are visited by a call statement.
+  std::set<FieldDecl *> treeChildsVisited;
+
   bool isRootNode();
+
+  // indicates if node is candidate for parrallel execution
+  bool IsSpawned = false;
+
+  int ID;
 
   struct MergeInfo *getMergeInfo() const {
     return Info;
@@ -94,6 +102,8 @@ public:
 
   bool isMerged() const { return IsMerged; }
 
+  bool isSpawned() const { return IsSpawned; }
+
   int getTraversalId() const { return TraversalId; }
 
   DG_Node(class StatementInfo *StmtInfo_, int TraversalId_) {
@@ -102,6 +112,8 @@ public:
   }
 
   bool allPredesVisited(std::unordered_map<DG_Node *, bool> &VisitedNodes);
+  void markVisited(std::unordered_map<DG_Node *, bool> &VisitedNodes);
+  set<DG_Node *> getAllSuccessors();
 };
 
 class DependenceGraph {

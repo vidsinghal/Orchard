@@ -27,6 +27,38 @@ std::vector<DG_Node *> MergeInfo::getCallsOrdered() {
   return Res;
 };
 
+// added functionality for mark nodes visited
+void DG_Node::markVisited(std::unordered_map<DG_Node *, bool> &VisitedNodes) {
+
+  if (!this->isMerged()) {
+    VisitedNodes[this] = true;
+    return;
+  }
+
+  // merged node case
+  auto *mergInfo = getMergeInfo();
+  for (auto *n : mergInfo->MergedNodes) {
+    VisitedNodes[n] = true;
+  }
+}
+// added functionality for returning all the successors of the merged nodes
+set<DG_Node *> DG_Node::getAllSuccessors() {
+  std::set<DG_Node *> successors;
+  if (isMerged()) {
+    auto *mergedInfo = getMergeInfo();
+    for (auto *n : getMergeInfo()->MergedNodes) {
+      for (auto &succ : n->getSuccessors()) {
+        auto *succNode = succ.first;
+        successors.insert(succNode);
+      }
+    }
+  } else
+    for (auto succ : getSuccessors()) {
+      successors.insert(succ.first);
+    }
+  return successors;
+}
+
 bool DG_Node::allPredesVisited(
     std::unordered_map<DG_Node *, bool> &VisitedNodes) {
   if (!isMerged()) {
@@ -53,14 +85,8 @@ bool DG_Node::allPredesVisited(
 }
 
 bool DG_Node::isRootNode() {
-  if (!IsMerged)
-    return getPredecessors().size() == 0;
-
-  for (auto *MergedNode : Info->MergedNodes) {
-    if (MergedNode->getPredecessors().size() != 0)
-      return false;
-  }
-  return true;
+  std::unordered_map<DG_Node *, bool> tmp;
+  return allPredesVisited(tmp);
 }
 
 /// TODO why pir?

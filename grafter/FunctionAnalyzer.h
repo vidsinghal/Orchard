@@ -48,7 +48,7 @@ private:
 
   /// Stores the statments information of the function
   std::vector<StatementInfo *> Statements;
- 
+
   /// List of called recursivly traversed children in original order
   std::vector<pair<clang::FunctionDecl *, clang::FieldDecl *>> TraversingCalls;
 
