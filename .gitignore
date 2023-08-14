@@ -1,6 +1,6 @@
 /*
-!/grafter-examples
-!/grafter
+!/orchard-examples
+!/orchard
 !.gitignore
 
 *.dot
@@ -8,7 +8,7 @@
 *.ps 
 *.out 
 
-grafter-examples/PieseWiseFunctions/UNFUSED/.vscode/ipch/2bc91200b1e22cb4/main.ipch
-grafter-examples/PieseWiseFunctions/UNFUSED/.vscode/ipch/2bc91200b1e22cb4/mmap_address.bin
-grafter-examples/PiecewiseFunctions/UNFUSED/.vscode
-grafter-examples/PointBlocking/*       
+orchard-examples/PieseWiseFunctions/UNFUSED/.vscode/ipch/2bc91200b1e22cb4/main.ipch
+orchard-examples/PieseWiseFunctions/UNFUSED/.vscode/ipch/2bc91200b1e22cb4/mmap_address.bin
+orchard-examples/PiecewiseFunctions/UNFUSED/.vscode
+orchard-examples/PointBlocking/*       

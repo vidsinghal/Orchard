@@ -1,4 +1,22 @@
+# Orchard build using docker instructions 
 
+To build the image execute the following command
+```
+    docker image build -t orchard .
+```
+To run the docker image we just built, run the following command
+```
+    docker run -t -i orchard
+```
+
+Use the ```generate_fused_code.sh``` script in orchard-examples to get the Fused and parallelized code. This uses grafter's default greedy heuristic. 
+The docker installs a copy of opencilk as well and adds it to the path. Use opencilk clang to compile the generated FUSED files and test the parallel performance!
+For example: 
+```
+clang -O3 -fopencilk orchard-examples/AST/FUSED/main.cpp -o main 
+```
+
+# Grafter Old instructions
 # Artifact evaluation guide
 
 ## Getting Started Guide
