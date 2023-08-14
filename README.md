@@ -13,7 +13,7 @@ Use the ```generate_fused_code.sh``` script in orchard-examples to get the Fused
 The docker installs a copy of opencilk as well and adds it to the path. Use opencilk clang to compile the generated FUSED files and test the parallel performance!
 For example: 
 ```
-clang -O3 -fopencilk orchard-examples/AST/FUSED/main.cpp -o main 
+clang++ -O3 -fopencilk orchard-examples/AST/FUSED/main.cpp -o main 
 ```
 
 # Grafter Old instructions
